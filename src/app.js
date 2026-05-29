@@ -8,6 +8,9 @@ const designCtx = designCanvas.getContext('2d');
 const form = document.querySelector('#controls');
 const fileInput = document.querySelector('#designFile');
 const runButton = document.querySelector('#runButton');
+const playButton = document.querySelector('#playButton');
+const pauseButton = document.querySelector('#pauseButton');
+const stopButton = document.querySelector('#stopButton');
 const exportButton = document.querySelector('#exportButton');
 const exampleButton = document.querySelector('#exampleButton');
 const metrics = document.querySelector('#metrics');
@@ -36,6 +39,7 @@ let currentImageData = createBlankImageData();
 let currentResult = null;
 let forceChart = null;
 let animationHandle = 0;
+let animationState = { status: 'stopped', elapsedS: 0, lastNow: 0 };
 let editorImageData = cloneImageData(currentImageData);
 let selectedMaterial = materialLegendRows()[0];
 let lineStart = null;
@@ -57,6 +61,9 @@ function initialize() {
 
   form.addEventListener('input', debounce(runSimulation, 150));
   runButton.addEventListener('click', runSimulation);
+  playButton.addEventListener('click', playAnimation);
+  pauseButton.addEventListener('click', pauseAnimation);
+  stopButton.addEventListener('click', stopAnimation);
   exampleButton.addEventListener('click', () => {
     currentImageData = createBlankImageData();
     editorImageData = cloneImageData(currentImageData);
@@ -109,6 +116,7 @@ function populateDefaults() {
     breakThresholdG: DEFAULTS.breakThresholdG,
     pixelScaleM: DEFAULTS.pixelScaleM,
     nominalDensityKgM3: DEFAULTS.nominalDensityKgM3,
+    displaySpeed: DEFAULTS.displaySpeed,
   })) {
     const input = form.elements.namedItem(key);
     if (input) input.value = value;
@@ -117,6 +125,10 @@ function populateDefaults() {
 
 function formOptions() {
   return Object.fromEntries(new FormData(form).entries().map(([key, value]) => [key, Number(value)]));
+}
+
+function displaySpeed() {
+  return clamp(Number(form.elements.namedItem('displaySpeed')?.value) || DEFAULTS.displaySpeed, 0.1, 10);
 }
 
 async function loadDesignFile(event) {
@@ -954,27 +966,59 @@ function drawDesignPreview(imageData) {
   designCtx.putImageData(preview, 0, 0);
 }
 
-function animate(result) {
+function animate(result, { autoplay = true } = {}) {
   cancelAnimationFrame(animationHandle);
-  const planckWorld = window.planck ? new window.planck.World({ gravity: window.planck.Vec2(0, -result.options.gravity) }) : null;
-  const eggBody = planckWorld?.createBody({ type: 'dynamic', position: window.planck.Vec2(0, result.options.dropHeightM + 0.3) });
-  eggBody?.createFixture(window.planck.Circle(0.08), { density: 1, friction: 0.3 });
-  planckWorld?.createBody().createFixture(window.planck.Edge(window.planck.Vec2(-1, 0), window.planck.Vec2(1, 0)));
+  animationState = {
+    status: autoplay ? 'playing' : 'stopped',
+    elapsedS: 0,
+    lastNow: performance.now(),
+  };
+  updatePlaybackButtons();
+  drawScene(nearestRecord(result.records, 0), result, 170);
+  if (autoplay) animationHandle = requestAnimationFrame(frameAnimation);
+}
 
-  const start = performance.now();
-  const duration = Math.max(1, result.summary.finalTimeS) * 1000;
-  const protectionHeightPx = 170;
+function playAnimation() {
+  if (!currentResult) return;
+  if (animationState.status === 'playing') return;
+  animationState.status = 'playing';
+  animationState.lastNow = performance.now();
+  updatePlaybackButtons();
+  animationHandle = requestAnimationFrame(frameAnimation);
+}
 
-  function frame(now) {
-    const t = ((now - start) % duration) / 1000;
-    const record = nearestRecord(result.records, t);
-    if (planckWorld) planckWorld.step(1 / 60);
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    drawScene(record, result, protectionHeightPx);
-    animationHandle = requestAnimationFrame(frame);
-  }
+function pauseAnimation() {
+  if (animationState.status !== 'playing') return;
+  cancelAnimationFrame(animationHandle);
+  animationState.status = 'paused';
+  updatePlaybackButtons();
+}
 
-  animationHandle = requestAnimationFrame(frame);
+function stopAnimation() {
+  cancelAnimationFrame(animationHandle);
+  animationState = { status: 'stopped', elapsedS: 0, lastNow: performance.now() };
+  updatePlaybackButtons();
+  if (currentResult) drawScene(nearestRecord(currentResult.records, 0), currentResult, 170);
+}
+
+function frameAnimation(now) {
+  if (!currentResult || animationState.status !== 'playing') return;
+  const duration = Math.max(0.05, currentResult.summary.finalTimeS);
+  const deltaS = Math.max(0, (now - animationState.lastNow) / 1000) * displaySpeed();
+  animationState.elapsedS = (animationState.elapsedS + deltaS) % duration;
+  animationState.lastNow = now;
+
+  const planckWorld = window.planck ? new window.planck.World({ gravity: window.planck.Vec2(0, -currentResult.options.gravity) }) : null;
+  if (planckWorld) planckWorld.step(1 / 60);
+
+  drawScene(nearestRecord(currentResult.records, animationState.elapsedS), currentResult, 170);
+  animationHandle = requestAnimationFrame(frameAnimation);
+}
+
+function updatePlaybackButtons() {
+  playButton.setAttribute('aria-pressed', String(animationState.status === 'playing'));
+  pauseButton.setAttribute('aria-pressed', String(animationState.status === 'paused'));
+  stopButton.setAttribute('aria-pressed', String(animationState.status === 'stopped'));
 }
 
 function drawScene(record, result, protectionHeightPx) {
@@ -982,29 +1026,103 @@ function drawScene(record, result, protectionHeightPx) {
   const h = canvas.height;
   const floorY = h - 34;
   const pxPerM = 75;
+  const isImpactZoom = record.compressionM > 0;
   const x = w / 2;
-  const y = floorY - record.positionM * pxPerM - 35;
+  const y = isImpactZoom ? floorY - 88 : floorY - record.positionM * pxPerM - 35;
   const compressionPx = record.compressionM * pxPerM;
+  const compressionRatio = result.summary.maxCompressionM > 0
+    ? clamp(record.compressionM / result.summary.maxCompressionM, 0, 1)
+    : 0;
 
   ctx.fillStyle = '#0d1220';
   ctx.fillRect(0, 0, w, h);
-  ctx.strokeStyle = '#29354f';
-  ctx.lineWidth = 1;
-  for (let gy = 20; gy < floorY; gy += 30) {
-    ctx.beginPath();
-    ctx.moveTo(0, gy);
-    ctx.lineTo(w, gy);
-    ctx.stroke();
-  }
+  drawSceneGrid(floorY, isImpactZoom);
 
   ctx.fillStyle = '#5b647a';
   ctx.fillRect(0, floorY, w, 16);
-  ctx.fillStyle = '#2f80ed';
-  ctx.fillRect(x - 45, y + 20 + compressionPx, 90, protectionHeightPx - compressionPx);
-  ctx.globalAlpha = 0.92;
-  ctx.drawImage(designCanvas, x - 45, y + 20 + compressionPx, 90, protectionHeightPx - compressionPx);
-  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#252d40';
+  ctx.fillRect(0, floorY + 16, w, h - floorY - 16);
 
+  if (isImpactZoom) {
+    const zoomWidth = w - 48;
+    const zoomHeight = zoomWidth * (currentImageData.height / currentImageData.width);
+    const compressedHeight = Math.max(24, zoomHeight - compressionPx * 8);
+    const structureBottom = floorY + Math.min(8, compressionPx * 0.25);
+    drawDeformedStructure(x, structureBottom - compressedHeight, zoomWidth, compressedHeight, compressionRatio, true);
+    drawEgg(x, Math.max(42, structureBottom - compressedHeight - 28), record, result);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '700 13px system-ui, sans-serif';
+    ctx.fillText('Impact zoom: structure width fills the display to show 2D deformation', 16, h - 12);
+  } else {
+    drawDeformedStructure(x, y + 20 + compressionPx, 90, Math.max(8, protectionHeightPx - compressionPx), compressionRatio, false);
+    drawEgg(x, y, record, result);
+  }
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '14px system-ui, sans-serif';
+  ctx.fillText(`t = ${record.time.toFixed(3)} s`, 16, 26);
+  ctx.fillText(`egg = ${record.eggG.toFixed(1)} g`, 16, 48);
+  ctx.fillText(`speed = ${displaySpeed().toFixed(1)}×`, 16, 70);
+  if (record.failed) ctx.fillText('support softened after crush/shear limit', 16, 92);
+}
+
+function drawSceneGrid(floorY, zoomed) {
+  ctx.strokeStyle = zoomed ? '#34466d' : '#29354f';
+  ctx.lineWidth = 1;
+  for (let gy = 20; gy < floorY; gy += zoomed ? 24 : 30) {
+    ctx.beginPath();
+    ctx.moveTo(0, gy);
+    ctx.lineTo(canvas.width, gy);
+    ctx.stroke();
+  }
+}
+
+function drawDeformedStructure(centerX, topY, width, height, compressionRatio, zoomed) {
+  const sourceWidth = designCanvas.width;
+  const sourceHeight = designCanvas.height;
+  const slices = Math.max(1, sourceHeight);
+  const sliceHeight = height / slices;
+  const maxBulge = width * (zoomed ? 0.18 : 0.14) * compressionRatio;
+  const buckle = width * 0.05 * compressionRatio;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, canvas.width, canvas.height);
+  ctx.clip();
+  ctx.globalAlpha = 0.26;
+  ctx.fillStyle = '#2f80ed';
+  ctx.fillRect(centerX - width / 2, topY, width, height);
+  ctx.globalAlpha = 0.95;
+
+  for (let sy = 0; sy < sourceHeight; sy += 1) {
+    const normalizedY = sy / Math.max(1, sourceHeight - 1);
+    const bottomBias = normalizedY ** 1.7;
+    const waist = Math.sin(Math.PI * normalizedY);
+    const sliceWidth = width + maxBulge * bottomBias * (0.45 + waist);
+    const lateralShift = Math.sin(normalizedY * Math.PI * 4) * buckle * bottomBias;
+    const dx = centerX - sliceWidth / 2 + lateralShift;
+    const dy = topY + sy * sliceHeight;
+    ctx.drawImage(designCanvas, 0, sy, sourceWidth, 1, dx, dy, sliceWidth, Math.max(1, sliceHeight + 0.75));
+  }
+
+  if (compressionRatio > 0) {
+    ctx.strokeStyle = `rgba(242, 153, 74, ${0.35 + compressionRatio * 0.45})`;
+    ctx.lineWidth = zoomed ? 3 : 2;
+    ctx.beginPath();
+    for (let i = 0; i <= 16; i += 1) {
+      const t = i / 16;
+      const yy = topY + height * t;
+      const offset = Math.sin(t * Math.PI * 4) * buckle * (t ** 1.5);
+      const edge = width / 2 + maxBulge * (t ** 1.7) * 0.45;
+      if (i === 0) ctx.moveTo(centerX - edge + offset, yy);
+      else ctx.lineTo(centerX - edge + offset, yy);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawEgg(x, y, record, result) {
   ctx.beginPath();
   ctx.arc(x, y, 20, 0, Math.PI * 2);
   ctx.fillStyle = '#fff2cc';
@@ -1012,16 +1130,12 @@ function drawScene(record, result, protectionHeightPx) {
   ctx.strokeStyle = record.eggG > result.options.breakThresholdG ? '#eb5757' : '#6fcf97';
   ctx.lineWidth = 4;
   ctx.stroke();
-
-  ctx.fillStyle = '#ffffff';
-  ctx.font = '14px system-ui, sans-serif';
-  ctx.fillText(`t = ${record.time.toFixed(3)} s`, 16, 26);
-  ctx.fillText(`egg = ${record.eggG.toFixed(1)} g`, 16, 48);
 }
 
 function nearestRecord(records, time) {
-  if (!records.length) return { time: 0, positionM: 0, compressionM: 0, eggG: 0 };
-  const index = Math.min(records.length - 1, Math.max(0, Math.floor((time / records.at(-1).time) * records.length)));
+  if (!records.length) return { time: 0, positionM: 0, compressionM: 0, eggG: 0, failed: false };
+  const lastTime = Math.max(records.at(-1).time, 0.0001);
+  const index = Math.min(records.length - 1, Math.max(0, Math.floor((time / lastTime) * records.length)));
   return records[index];
 }
 

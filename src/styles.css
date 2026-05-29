@@ -90,6 +90,7 @@ body {
 canvas { max-width: 100%; border-radius: 0.75rem; background: #0d1220; }
 button { border: 0; border-radius: 999px; padding: 0.68rem 0.95rem; color: white; background: var(--blue); font-weight: 850; cursor: pointer; white-space: nowrap; }
 button.secondary { background: #33415f; }
+button:disabled { opacity: 0.48; cursor: not-allowed; }
 .compact { padding: 0.45rem 0.7rem; }
 .button-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .no-wrap { flex-wrap: nowrap; }
