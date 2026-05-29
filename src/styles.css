@@ -99,7 +99,7 @@ button.secondary { background: #33415f; }
 .designer-grid { min-height: 0; display: grid; grid-template-columns: minmax(14rem, 0.82fr) minmax(20rem, 1.2fr) minmax(14rem, 0.78fr); gap: 0.8rem; align-items: stretch; }
 .designer-tools,
 .design-reference { min-height: 0; display: grid; gap: 0.65rem; }
-.designer-tools { grid-template-rows: minmax(0, 1fr) auto auto auto auto; }
+.designer-tools { grid-template-rows: repeat(5, auto); align-content: start; overflow-y: auto; padding-right: 0.25rem; }
 .designer-tools fieldset { min-width: 0; margin: 0; border: 1px solid #34405f; border-radius: 0.95rem; padding: 0.72rem; background: #0d1323; }
 .designer-tools legend { color: var(--text); font-weight: 850; padding: 0 0.3rem; }
 .designer-tools label { margin-top: 0.42rem; }
