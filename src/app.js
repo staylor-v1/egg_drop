@@ -14,15 +14,12 @@ const metrics = document.querySelector('#metrics');
 const swatches = document.querySelector('#swatches');
 const assumptions = document.querySelector('#assumptions');
 const statusText = document.querySelector('#statusText');
-const designerModal = document.querySelector('#designerModal');
 const designerCanvas = document.querySelector('#designerCanvas');
 const designerCtx = designerCanvas.getContext('2d', { willReadFrequently: true });
 const designerMaterials = document.querySelector('#designerMaterials');
 const designerHint = document.querySelector('#designerHint');
 const designerOpenButton = document.querySelector('#designerOpenButton');
 const designerOpenPreviewButton = document.querySelector('#designerOpenPreviewButton');
-const designerCloseButton = document.querySelector('#designerCloseButton');
-const designerCancelButton = document.querySelector('#designerCancelButton');
 const designerApplyButton = document.querySelector('#designerApplyButton');
 const designerClearButton = document.querySelector('#designerClearButton');
 const boxFilledInput = document.querySelector('#boxFilled');
@@ -30,6 +27,8 @@ const boxThicknessInput = document.querySelector('#boxThickness');
 const latticePatternInput = document.querySelector('#latticePattern');
 const latticeSpacingInput = document.querySelector('#latticeSpacing');
 const latticeThicknessInput = document.querySelector('#latticeThickness');
+const modeTabs = document.querySelectorAll('.mode-tab');
+const modeViews = document.querySelectorAll('.mode-view');
 
 let currentImageData = createBlankImageData();
 let currentResult = null;
@@ -53,16 +52,17 @@ function initialize() {
   runButton.addEventListener('click', runSimulation);
   exampleButton.addEventListener('click', () => {
     currentImageData = createBlankImageData();
+    editorImageData = cloneImageData(currentImageData);
     drawDesignPreview(currentImageData);
+    renderDesignerCanvas(editorImageData);
     statusText.textContent = 'Loaded generated foam lattice example.';
     runSimulation();
   });
   exportButton.addEventListener('click', exportCsv);
   fileInput.addEventListener('change', loadDesignFile);
-  designerOpenButton.addEventListener('click', openDesigner);
-  designerOpenPreviewButton.addEventListener('click', openDesigner);
-  designerCloseButton.addEventListener('click', closeDesigner);
-  designerCancelButton.addEventListener('click', closeDesigner);
+  designerOpenButton.addEventListener('click', () => switchMode('design', { refreshEditor: true }));
+  designerOpenPreviewButton.addEventListener('click', () => switchMode('design', { refreshEditor: true }));
+  modeTabs.forEach((tab) => tab.addEventListener('click', () => switchMode(tab.dataset.mode)));
   designerApplyButton.addEventListener('click', applyDesigner);
   designerClearButton.addEventListener('click', clearDesigner);
   designerCanvas.addEventListener('pointerdown', handleDesignerPointerDown);
@@ -105,7 +105,9 @@ async function loadDesignFile(event) {
   offscreenCtx.imageSmoothingEnabled = false;
   offscreenCtx.drawImage(bitmap, 0, 0, offscreen.width, offscreen.height);
   currentImageData = offscreenCtx.getImageData(0, 0, offscreen.width, offscreen.height);
+  editorImageData = cloneImageData(currentImageData);
   drawDesignPreview(currentImageData);
+  renderDesignerCanvas(editorImageData);
   statusText.textContent = `Loaded ${file.name}; transparent pixels are ignored.`;
   runSimulation();
 }
@@ -217,31 +219,36 @@ function initializeDesigner() {
   updateDesignerHint();
 }
 
-function openDesigner() {
-  editorImageData = cloneImageData(currentImageData);
-  lineStart = null;
-  dragStart = null;
-  renderDesignerCanvas(editorImageData);
-  updateDesignerHint();
-  if (typeof designerModal.showModal === 'function') {
-    designerModal.showModal();
-  } else {
-    designerModal.setAttribute('open', '');
-  }
-}
+function switchMode(mode, { refreshEditor = false } = {}) {
+  modeTabs.forEach((tab) => {
+    const active = tab.dataset.mode === mode;
+    tab.classList.toggle('active', active);
+    tab.setAttribute('aria-pressed', String(active));
+  });
+  modeViews.forEach((view) => {
+    const active = view.dataset.mode === mode;
+    view.classList.toggle('active', active);
+    view.hidden = !active;
+  });
 
-function closeDesigner() {
-  lineStart = null;
-  dragStart = null;
-  designerModal.close?.();
-  designerModal.removeAttribute('open');
+  if (mode === 'design' && refreshEditor) {
+    editorImageData = cloneImageData(currentImageData);
+    lineStart = null;
+    dragStart = null;
+    renderDesignerCanvas(editorImageData);
+    updateDesignerHint();
+  }
+
+  if (mode === 'simulate') {
+    runSimulation();
+    forceChart?.resize();
+  }
 }
 
 function applyDesigner() {
   currentImageData = cloneImageData(editorImageData);
   drawDesignPreview(currentImageData);
-  statusText.textContent = 'Applied hand-drawn design from the design modal.';
-  closeDesigner();
+  statusText.textContent = 'Applied hand-drawn design. Switch to Simulate to test the current structure.';
   runSimulation();
 }
 

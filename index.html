@@ -10,144 +10,150 @@
     <script type="module" src="src/app.js"></script>
   </head>
   <body>
-    <header class="hero">
-      <div>
+    <header class="app-header">
+      <div class="brand-block">
         <p class="eyebrow">2D physics / image-driven materials</p>
         <h1>Egg Drop Challenge Simulator</h1>
-        <p>
-          Upload a transparent PNG silhouette of your protective design. The 64 × 256 pixel field becomes the protection geometry, and each visible pixel's red, green, and blue channels map to stiffness, damping/crush, and shear failure behavior.
-        </p>
       </div>
+      <nav class="mode-tabs" aria-label="Workspace mode">
+        <button id="designModeTab" class="mode-tab active" type="button" data-mode="design" aria-pressed="true">Design</button>
+        <button id="simulateModeTab" class="mode-tab" type="button" data-mode="simulate" aria-pressed="false">Simulate</button>
+      </nav>
       <div class="status-card">
         <span>Default egg limit</span>
         <strong>50 g</strong>
-        <small>editable in controls</small>
+        <small>editable in simulate</small>
       </div>
     </header>
 
-    <main class="layout">
-      <section class="panel controls-panel">
-        <h2>Inputs</h2>
-        <label class="file-drop">
-          <span>Load design image</span>
-          <input id="designFile" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" />
-        </label>
-        <p id="statusText" class="muted">Using generated example lattice. CAD import is intentionally out of scope for this image-only prototype.</p>
-        <button id="designerOpenButton" type="button" class="wide-button">Open design modal</button>
-
-        <form id="controls" class="grid-form">
-          <label>Drop height (m)<input name="dropHeightM" type="number" min="0.1" max="20" step="0.1" /></label>
-          <label>Gravity (m/s²)<input name="gravity" type="number" min="0" max="20" step="0.01" /></label>
-          <label>Egg mass (kg)<input name="eggMassKg" type="number" min="0.01" max="0.2" step="0.001" /></label>
-          <label>Payload mass (kg)<input name="payloadMassKg" type="number" min="0" max="1" step="0.001" /></label>
-          <label>Break threshold (g)<input name="breakThresholdG" type="number" min="5" max="200" step="1" /></label>
-          <label>Pixel scale (m/px)<input name="pixelScaleM" type="number" min="0.0005" max="0.02" step="0.0005" /></label>
-          <label>Nominal density (kg/m³)<input name="nominalDensityKgM3" type="number" min="10" max="1500" step="5" /></label>
-        </form>
-        <div class="button-row">
-          <button id="runButton" type="button">Run simulation</button>
-          <button id="exampleButton" type="button" class="secondary">Reset example</button>
-          <button id="exportButton" type="button" class="secondary">Export CSV</button>
-        </div>
-      </section>
-
-      <section class="panel sim-panel">
-        <div class="panel-header">
-          <h2>Impact animation</h2>
-          <span>Planck.js world + custom crush model</span>
-        </div>
-        <canvas id="simCanvas" width="640" height="420" aria-label="Egg drop animation"></canvas>
-      </section>
-
-      <section class="panel design-panel">
-        <div class="panel-header">
-          <h2>Design preview</h2>
-          <button id="designerOpenPreviewButton" type="button" class="secondary compact">Edit</button>
-        </div>
-        <canvas id="designCanvas" width="64" height="256" aria-label="Uploaded design pixels"></canvas>
-        <p class="muted">Transparent pixels are ignored. The egg starts at the top center of the assembly.</p>
-      </section>
-
-      <section class="panel metrics-panel">
-        <h2>Score</h2>
-        <div id="metrics" class="metrics"></div>
-      </section>
-
-      <section class="panel chart-panel">
-        <h2>Force history</h2>
-        <div class="chart-wrap"><canvas id="forceChart"></canvas></div>
-      </section>
-
-      <section class="panel legend-panel">
-        <h2>Material hex codes</h2>
-        <ul id="swatches" class="swatches"></ul>
-      </section>
-
-      <section class="panel assumptions-panel">
-        <h2>Model assumptions</h2>
-        <ul id="assumptions"></ul>
-      </section>
-    </main>
-
-    <dialog id="designerModal" class="designer-modal" aria-labelledby="designerTitle">
-      <form method="dialog" class="designer-shell">
-        <div class="designer-header">
-          <div>
-            <p class="eyebrow">Pixel structure editor</p>
-            <h2 id="designerTitle">Design modal</h2>
-            <p class="muted">Pick a material, then draw directly onto the 64 × 256 design grid.</p>
-          </div>
-          <button id="designerCloseButton" type="button" class="secondary compact" aria-label="Close design modal">×</button>
-        </div>
-
-        <div class="designer-grid">
-          <aside class="designer-tools" aria-label="Design tools">
-            <fieldset>
-              <legend>Material</legend>
-              <div id="designerMaterials" class="material-picker"></div>
-            </fieldset>
-
-            <fieldset>
-              <legend>Tool</legend>
-              <label><input type="radio" name="designerTool" value="line" checked /> Line between clicks</label>
-              <label><input type="radio" name="designerTool" value="box" /> Box drag</label>
-              <label><input type="radio" name="designerTool" value="lattice" /> Lattice drag</label>
-              <label><input type="radio" name="designerTool" value="erase" /> Eraser</label>
-            </fieldset>
-
-            <fieldset id="boxParameters">
-              <legend>Box parameters</legend>
-              <label><input id="boxFilled" type="checkbox" checked /> Filled box</label>
-              <label>Wall thickness (px)<input id="boxThickness" type="number" min="1" max="16" step="1" value="2" /></label>
-            </fieldset>
-
-            <fieldset id="latticeParameters">
-              <legend>Lattice parameters</legend>
-              <label>Pattern
-                <select id="latticePattern">
-                  <option value="cross">Cross brace</option>
-                  <option value="diagonal">Diagonal</option>
-                  <option value="square">Square grid</option>
-                  <option value="triangle">Triangle</option>
-                </select>
-              </label>
-              <label>Cell size (px)<input id="latticeSpacing" type="number" min="3" max="32" step="1" value="10" /></label>
-              <label>Strut thickness (px)<input id="latticeThickness" type="number" min="1" max="8" step="1" value="1" /></label>
-            </fieldset>
-
-            <div class="button-row">
+    <main class="workspace">
+      <section id="designMode" class="mode-view active" data-mode="design" aria-labelledby="designWorkspaceTitle">
+        <div class="panel design-workbench">
+          <div class="panel-header compact-header">
+            <div>
+              <p class="eyebrow">Pixel structure editor</p>
+              <h2 id="designWorkspaceTitle">Design mode</h2>
+            </div>
+            <div class="button-row no-wrap">
               <button id="designerApplyButton" type="button">Apply design</button>
               <button id="designerClearButton" type="button" class="secondary">Clear</button>
-              <button id="designerCancelButton" type="button" class="secondary">Cancel</button>
+              <button id="exampleButton" type="button" class="secondary">Reset example</button>
             </div>
-          </aside>
+          </div>
 
-          <div class="designer-stage">
-            <canvas id="designerCanvas" width="64" height="256" aria-label="Editable design canvas"></canvas>
-            <p id="designerHint" class="muted">Line tool: click once to set the start, then click again to draw.</p>
+          <div class="designer-grid inline-designer">
+            <aside class="designer-tools" aria-label="Design tools">
+              <fieldset>
+                <legend>Material</legend>
+                <div id="designerMaterials" class="material-picker"></div>
+              </fieldset>
+
+              <fieldset>
+                <legend>Tool</legend>
+                <label><input type="radio" name="designerTool" value="line" checked /> Line between clicks</label>
+                <label><input type="radio" name="designerTool" value="box" /> Box drag</label>
+                <label><input type="radio" name="designerTool" value="lattice" /> Lattice drag</label>
+                <label><input type="radio" name="designerTool" value="erase" /> Eraser</label>
+              </fieldset>
+
+              <fieldset id="boxParameters">
+                <legend>Box parameters</legend>
+                <label><input id="boxFilled" type="checkbox" checked /> Filled box</label>
+                <label>Wall thickness (px)<input id="boxThickness" type="number" min="1" max="16" step="1" value="2" /></label>
+              </fieldset>
+
+              <fieldset id="latticeParameters">
+                <legend>Lattice parameters</legend>
+                <label>Pattern
+                  <select id="latticePattern">
+                    <option value="cross">Cross brace</option>
+                    <option value="diagonal">Diagonal</option>
+                    <option value="square">Square grid</option>
+                    <option value="triangle">Triangle</option>
+                  </select>
+                </label>
+                <label>Cell size (px)<input id="latticeSpacing" type="number" min="3" max="32" step="1" value="10" /></label>
+                <label>Strut thickness (px)<input id="latticeThickness" type="number" min="1" max="8" step="1" value="1" /></label>
+              </fieldset>
+            </aside>
+
+            <div class="designer-stage">
+              <canvas id="designerCanvas" width="64" height="256" aria-label="Editable design canvas"></canvas>
+              <p id="designerHint" class="muted">Line tool: click once to set the start, then click again to draw.</p>
+            </div>
+
+            <aside class="design-reference" aria-label="Design import and reference">
+              <label class="file-drop">
+                <span>Load design image</span>
+                <input id="designFile" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" />
+              </label>
+              <p id="statusText" class="muted">Using generated example lattice. CAD import is intentionally out of scope for this image-only prototype.</p>
+
+              <section class="preview-card">
+                <div class="panel-header">
+                  <h3>Applied preview</h3>
+                  <button id="designerOpenPreviewButton" type="button" class="secondary compact">Edit current</button>
+                </div>
+                <canvas id="designCanvas" width="64" height="256" aria-label="Uploaded design pixels"></canvas>
+                <p class="muted">Transparent pixels are ignored. The egg starts at the top center of the assembly.</p>
+              </section>
+
+              <section class="legend-panel compact-list">
+                <h3>Material hex codes</h3>
+                <ul id="swatches" class="swatches"></ul>
+              </section>
+            </aside>
           </div>
         </div>
-      </form>
-    </dialog>
+      </section>
+
+      <section id="simulateMode" class="mode-view" data-mode="simulate" aria-labelledby="simulateWorkspaceTitle" hidden>
+        <div class="simulate-grid">
+          <section class="panel controls-panel">
+            <div class="panel-header compact-header">
+              <div>
+                <p class="eyebrow">One-window run setup</p>
+                <h2 id="simulateWorkspaceTitle">Simulate mode</h2>
+              </div>
+              <button id="designerOpenButton" type="button" class="secondary compact">Design</button>
+            </div>
+            <form id="controls" class="grid-form compact-form">
+              <label>Drop height (m)<input name="dropHeightM" type="number" min="0.1" max="20" step="0.1" /></label>
+              <label>Gravity (m/s²)<input name="gravity" type="number" min="0" max="20" step="0.01" /></label>
+              <label>Egg mass (kg)<input name="eggMassKg" type="number" min="0.01" max="0.2" step="0.001" /></label>
+              <label>Payload mass (kg)<input name="payloadMassKg" type="number" min="0" max="1" step="0.001" /></label>
+              <label>Break threshold (g)<input name="breakThresholdG" type="number" min="5" max="200" step="1" /></label>
+              <label>Pixel scale (m/px)<input name="pixelScaleM" type="number" min="0.0005" max="0.02" step="0.0005" /></label>
+              <label>Nominal density (kg/m³)<input name="nominalDensityKgM3" type="number" min="10" max="1500" step="5" /></label>
+            </form>
+            <div class="button-row no-wrap">
+              <button id="runButton" type="button">Run simulation</button>
+              <button id="exportButton" type="button" class="secondary">Export CSV</button>
+            </div>
+            <div id="metrics" class="metrics"></div>
+          </section>
+
+          <section class="panel sim-panel">
+            <div class="panel-header compact-header">
+              <div>
+                <h2>Impact animation</h2>
+                <span>Planck.js world + custom crush model</span>
+              </div>
+            </div>
+            <canvas id="simCanvas" width="640" height="420" aria-label="Egg drop animation"></canvas>
+          </section>
+
+          <section class="panel chart-panel">
+            <h2>Force history</h2>
+            <div class="chart-wrap"><canvas id="forceChart"></canvas></div>
+          </section>
+
+          <section class="panel assumptions-panel compact-list">
+            <h2>Model assumptions</h2>
+            <ul id="assumptions"></ul>
+          </section>
+        </div>
+      </section>
+    </main>
   </body>
 </html>
