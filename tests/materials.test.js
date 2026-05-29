@@ -42,6 +42,8 @@ test('simulation produces score, force histories, and CSV export rows', () => {
   const result = runEggDropSimulation(imageData, { dropHeightM: 2, breakThresholdG: 50 });
   assert.ok(result.summary.score >= 0 && result.summary.score <= 100);
   assert.ok(result.records.length > 10);
+  assert.ok(result.summary.impactTimeS > 0);
+  assert.ok(result.summary.impactTimeS <= result.summary.finalTimeS);
   assert.ok(result.summary.peakAssemblyForceN >= result.summary.peakEggForceN || result.summary.peakAssemblyForceN > 0);
   const csv = imageDataToCsv(result);
   assert.match(csv, /^time_s,position_m,compression_m/m);

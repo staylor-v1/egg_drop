@@ -29,9 +29,11 @@ export function runEggDropSimulation(imageData, userOptions = {}) {
   let peakAssemblyForceN = 0;
   let timeAboveThresholdS = 0;
   let floorContact = false;
+  let impactTimeS = null;
 
   for (let step = 0; step < maxSteps; step += 1) {
     const compression = Math.max(0, -state.y);
+    if (impactTimeS === null && compression > 0) impactTimeS = state.time;
     floorContact = floorContact || compression > 0;
     const strokeRatio = equivalent.strokeM > 0 ? compression / equivalent.strokeM : 1;
     const shearRatio = equivalent.shearFailureStrain > 0 ? strokeRatio / equivalent.shearFailureStrain : Infinity;
@@ -95,6 +97,7 @@ export function runEggDropSimulation(imageData, userOptions = {}) {
       status: peakEggG <= options.breakThresholdG ? 'Egg survives' : 'Egg breaks',
       timeAboveThresholdS,
       maxCompressionM: Math.max(...records.map((record) => record.compressionM), 0),
+      impactTimeS: impactTimeS ?? finalRecord?.time ?? 0,
       finalTimeS: finalRecord?.time ?? 0,
     },
     records,

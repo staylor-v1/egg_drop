@@ -12,6 +12,7 @@ var DEFAULTS = Object.freeze({
   breakThresholdG: 50,
   pixelScaleM: 0.003,
   nominalDensityKgM3: 120,
+  impactPlaybackSpeed: 0.25,
   timeStep: 1 / 240,
   maxTimeS: 3.5,
 });
@@ -258,9 +259,11 @@ function runEggDropSimulation(imageData, userOptions = {}) {
   let peakAssemblyForceN = 0;
   let timeAboveThresholdS = 0;
   let floorContact = false;
+  let impactTimeS = null;
 
   for (let step = 0; step < maxSteps; step += 1) {
     const compression = Math.max(0, -state.y);
+    if (impactTimeS === null && compression > 0) impactTimeS = state.time;
     floorContact = floorContact || compression > 0;
     const strokeRatio = equivalent.strokeM > 0 ? compression / equivalent.strokeM : 1;
     const shearRatio = equivalent.shearFailureStrain > 0 ? strokeRatio / equivalent.shearFailureStrain : Infinity;
@@ -324,6 +327,7 @@ function runEggDropSimulation(imageData, userOptions = {}) {
       status: peakEggG <= options.breakThresholdG ? 'Egg survives' : 'Egg breaks',
       timeAboveThresholdS,
       maxCompressionM: Math.max(...records.map((record) => record.compressionM), 0),
+      impactTimeS: impactTimeS ?? finalRecord?.time ?? 0,
       finalTimeS: finalRecord?.time ?? 0,
     },
     records,
@@ -485,6 +489,7 @@ function populateDefaults() {
     breakThresholdG: DEFAULTS.breakThresholdG,
     pixelScaleM: DEFAULTS.pixelScaleM,
     nominalDensityKgM3: DEFAULTS.nominalDensityKgM3,
+    impactPlaybackSpeed: DEFAULTS.impactPlaybackSpeed,
   })) {
     const input = form.elements.namedItem(key);
     if (input) input.value = value;
@@ -535,6 +540,7 @@ function renderMetrics(result) {
     <article class="metric"><span>Peak assembly force</span><strong>${summary.peakAssemblyForceN.toFixed(0)} N</strong></article>
     <article class="metric"><span>Survival margin</span><strong>${summary.survivalMargin.toFixed(2)}×</strong></article>
     <article class="metric"><span>Protection mass</span><strong>${(summary.protectionMassKg * 1000).toFixed(1)} g</strong></article>
+    <article class="metric"><span>Impact time</span><strong>${summary.impactTimeS.toFixed(3)} s</strong></article>
   `;
 }
 
@@ -593,6 +599,7 @@ function renderAssumptions(result) {
     <li>Red maps to stiffness (${eq.stiffnessNPerM.toFixed(0)} N/m equivalent).</li>
     <li>Green maps to damping and crush stroke (${eq.dampingNsPerM.toFixed(0)} Ns/m, ${eq.strokeM.toFixed(3)} m stroke).</li>
     <li>Blue maps to shear failure strain and shear energy absorption (${eq.shearFailureStrain.toFixed(2)} strain, ${eq.shearEnergyJ.toFixed(2)} J reserve).</li>
+    <li>The animation runs at 1× before impact, then uses the configured ${normalizedImpactPlaybackSpeed(result.options).toFixed(2)}× impact playback speed after floor contact.</li>
     <li>The current build is a one-axis floor impact model with a circular egg and rigid floor.</li>
   `;
 }
@@ -1338,11 +1345,18 @@ function animate(result) {
   planckWorld?.createBody().createFixture(window.planck.Edge(window.planck.Vec2(-1, 0), window.planck.Vec2(1, 0)));
 
   const start = performance.now();
-  const duration = Math.max(1, result.summary.finalTimeS) * 1000;
+  const impactPlaybackSpeed = normalizedImpactPlaybackSpeed(result.options);
+  const impactTimeS = Math.min(result.summary.impactTimeS, result.summary.finalTimeS);
+  const postImpactTimeS = Math.max(0, result.summary.finalTimeS - impactTimeS);
+  const playbackDurationS = Math.max(1, impactTimeS + (postImpactTimeS / impactPlaybackSpeed));
+  const duration = playbackDurationS * 1000;
   const protectionHeightPx = 170;
 
   function frame(now) {
-    const t = ((now - start) % duration) / 1000;
+    const playbackTimeS = ((now - start) % duration) / 1000;
+    const t = playbackTimeS <= impactTimeS
+      ? playbackTimeS
+      : impactTimeS + ((playbackTimeS - impactTimeS) * impactPlaybackSpeed);
     const record = nearestRecord(result.records, t);
     if (planckWorld) planckWorld.step(1 / 60);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -1393,6 +1407,12 @@ function drawScene(record, result, protectionHeightPx) {
   ctx.font = '14px system-ui, sans-serif';
   ctx.fillText(`t = ${record.time.toFixed(3)} s`, 16, 26);
   ctx.fillText(`egg = ${record.eggG.toFixed(1)} g`, 16, 48);
+  ctx.fillText(`impact playback = ${normalizedImpactPlaybackSpeed(result.options).toFixed(2)}×`, 16, 70);
+}
+
+function normalizedImpactPlaybackSpeed(options) {
+  const speed = Number(options.impactPlaybackSpeed);
+  return clamp(Number.isFinite(speed) && speed > 0 ? speed : DEFAULTS.impactPlaybackSpeed, 0.05, 2);
 }
 
 function nearestRecord(records, time) {

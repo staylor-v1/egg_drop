@@ -8,6 +8,7 @@ export const DEFAULTS = Object.freeze({
   breakThresholdG: 50,
   pixelScaleM: 0.003,
   nominalDensityKgM3: 120,
+  impactPlaybackSpeed: 0.25,
   timeStep: 1 / 240,
   maxTimeS: 3.5,
 });

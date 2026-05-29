@@ -104,7 +104,9 @@ async function runCreateEditSimulateFlow(page, url) {
 
   await page.getByRole('button', { name: 'Apply design' }).click();
   await page.getByRole('button', { name: 'Simulate' }).click();
+  await page.locator('input[name="impactPlaybackSpeed"]').fill('0.15');
   await page.getByRole('button', { name: 'Run simulation' }).click();
+  await page.getByText('0.15× impact playback speed').waitFor();
   const firstScore = await page.locator('.metric', { hasText: 'Score' }).textContent();
   assert.match(firstScore ?? '', /Score\d+\/100/);
 

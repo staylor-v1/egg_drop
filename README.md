@@ -29,6 +29,7 @@ Example material colors shown in the app include balsa, toothpicks, plastic stra
 - Score and survival/break status.
 - Peak egg g-force and assembly force metrics.
 - Force-over-time plots for the assembly and egg.
+- Configurable impact playback speed so the display can slow down after floor contact.
 - CSV report export.
 
 ## Model scope
