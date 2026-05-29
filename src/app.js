@@ -27,6 +27,8 @@ const boxThicknessInput = document.querySelector('#boxThickness');
 const latticePatternInput = document.querySelector('#latticePattern');
 const latticeSpacingInput = document.querySelector('#latticeSpacing');
 const latticeThicknessInput = document.querySelector('#latticeThickness');
+const selectedElementParameters = document.querySelector('#selectedElementParameters');
+const selectedElementForm = document.querySelector('#selectedElementForm');
 const modeTabs = document.querySelectorAll('.mode-tab');
 const modeViews = document.querySelectorAll('.mode-view');
 
@@ -38,6 +40,11 @@ let editorImageData = cloneImageData(currentImageData);
 let selectedMaterial = materialLegendRows()[0];
 let lineStart = null;
 let dragStart = null;
+let baseEditorImageData = new ImageData(DEFAULTS.imageWidth, DEFAULTS.imageHeight);
+let designElements = [];
+let selectedElementId = null;
+let activeEdit = null;
+let nextElementId = 1;
 
 initialize();
 
@@ -53,6 +60,9 @@ function initialize() {
   exampleButton.addEventListener('click', () => {
     currentImageData = createBlankImageData();
     editorImageData = cloneImageData(currentImageData);
+    baseEditorImageData = new ImageData(DEFAULTS.imageWidth, DEFAULTS.imageHeight);
+    designElements = [];
+    selectedElementId = null;
     drawDesignPreview(currentImageData);
     renderDesignerCanvas(editorImageData);
     statusText.textContent = 'Loaded generated foam lattice example.';
@@ -70,7 +80,23 @@ function initialize() {
   designerCanvas.addEventListener('pointerup', handleDesignerPointerUp);
   designerCanvas.addEventListener('pointerleave', handleDesignerPointerLeave);
   document.querySelectorAll('input[name="designerTool"]').forEach((input) => {
-    input.addEventListener('change', updateDesignerHint);
+    input.addEventListener('change', () => {
+      lineStart = null;
+      dragStart = null;
+      updateToolSelection();
+      updateDesignerHint();
+      renderDesignerCanvas(editorImageData);
+    });
+  });
+  [boxFilledInput, boxThicknessInput, latticePatternInput, latticeSpacingInput, latticeThicknessInput].forEach((input) => {
+    input.addEventListener('input', () => {
+      updateSelectedElementFromToolParameters();
+      updateDesignerHint();
+    });
+    input.addEventListener('change', () => {
+      updateSelectedElementFromToolParameters();
+      updateDesignerHint();
+    });
   });
 }
 
@@ -106,6 +132,9 @@ async function loadDesignFile(event) {
   offscreenCtx.drawImage(bitmap, 0, 0, offscreen.width, offscreen.height);
   currentImageData = offscreenCtx.getImageData(0, 0, offscreen.width, offscreen.height);
   editorImageData = cloneImageData(currentImageData);
+  baseEditorImageData = cloneImageData(editorImageData);
+  designElements = [];
+  selectedElementId = null;
   drawDesignPreview(currentImageData);
   renderDesignerCanvas(editorImageData);
   statusText.textContent = `Loaded ${file.name}; transparent pixels are ignored.`;
@@ -162,6 +191,8 @@ function renderChart(result) {
     forceChart.update('none');
     return;
   }
+
+  if (!window.Chart) return;
 
   forceChart = new Chart(document.querySelector('#forceChart'), {
     type: 'line',
@@ -233,8 +264,12 @@ function switchMode(mode, { refreshEditor = false } = {}) {
 
   if (mode === 'design' && refreshEditor) {
     editorImageData = cloneImageData(currentImageData);
+    baseEditorImageData = cloneImageData(editorImageData);
+    designElements = [];
+    selectedElementId = null;
     lineStart = null;
     dragStart = null;
+    activeEdit = null;
     renderDesignerCanvas(editorImageData);
     updateDesignerHint();
   }
@@ -254,8 +289,12 @@ function applyDesigner() {
 
 function clearDesigner() {
   editorImageData = new ImageData(DEFAULTS.imageWidth, DEFAULTS.imageHeight);
+  baseEditorImageData = cloneImageData(editorImageData);
+  designElements = [];
+  selectedElementId = null;
   lineStart = null;
   dragStart = null;
+  activeEdit = null;
   renderDesignerCanvas(editorImageData);
   updateDesignerHint();
 }
@@ -264,6 +303,27 @@ function handleDesignerPointerDown(event) {
   event.preventDefault();
   const point = canvasPoint(event, designerCanvas);
   const tool = selectedTool();
+  const selectedElement = currentSelectedElement();
+  const handle = selectedElement ? handleAtPoint(selectedElement, point) : null;
+
+  if (handle) {
+    activeEdit = { type: 'handle', elementId: selectedElement.id, handle };
+    designerCanvas.setPointerCapture(event.pointerId);
+    updateDesignerHint(`Drag the highlighted ${handle} handle to reshape the selected ${selectedElement.type}.`);
+    return;
+  }
+
+  const hitElement = elementAtPoint(point);
+  if (hitElement) {
+    selectElement(hitElement.id);
+    activeEdit = { type: 'move', elementId: hitElement.id, lastPoint: point };
+    designerCanvas.setPointerCapture(event.pointerId);
+    updateDesignerHint(`Selected ${hitElement.type}. Drag highlighted points or change its parameters.`);
+    return;
+  }
+
+  selectedElementId = null;
+  renderSelectedElementParameters();
 
   if (tool === 'line') {
     if (!lineStart) {
@@ -272,9 +332,8 @@ function handleDesignerPointerDown(event) {
       renderDesignerCanvas(editorImageData, (ctxForOverlay) => drawHandle(ctxForOverlay, point));
       return;
     }
-    drawLine(editorImageData, lineStart, point, currentColor());
+    addDesignElement({ type: 'line', start: lineStart, end: point, color: currentColor(), hex: selectedMaterial.hex, thickness: 1 });
     lineStart = null;
-    renderDesignerCanvas(editorImageData);
     updateDesignerHint();
     return;
   }
@@ -283,18 +342,26 @@ function handleDesignerPointerDown(event) {
   designerCanvas.setPointerCapture(event.pointerId);
   if (tool === 'erase') {
     eraseAt(editorImageData, point, 3);
+    baseEditorImageData = cloneImageData(editorImageData);
     renderDesignerCanvas(editorImageData);
   }
 }
 
 function handleDesignerPointerMove(event) {
-  if (!dragStart) return;
   const point = canvasPoint(event, designerCanvas);
+
+  if (activeEdit) {
+    editSelectedElement(point);
+    return;
+  }
+
+  if (!dragStart) return;
   const tool = selectedTool();
 
   if (tool === 'erase') {
     eraseLine(editorImageData, dragStart, point, 3);
     dragStart = point;
+    baseEditorImageData = cloneImageData(editorImageData);
     renderDesignerCanvas(editorImageData);
     return;
   }
@@ -312,16 +379,40 @@ function handleDesignerPointerMove(event) {
 }
 
 function handleDesignerPointerUp(event) {
-  if (!dragStart) return;
   const point = canvasPoint(event, designerCanvas);
+
+  if (activeEdit) {
+    editSelectedElement(point);
+    activeEdit = null;
+    designerCanvas.releasePointerCapture(event.pointerId);
+    renderDesignerCanvas(editorImageData);
+    updateDesignerHint();
+    return;
+  }
+
+  if (!dragStart) return;
   const tool = selectedTool();
 
   if (tool === 'box') {
-    drawBox(editorImageData, normalizedRect(dragStart, point), currentColor(), boxFilledInput.checked, numericInput(boxThicknessInput, 2));
+    addDesignElement({
+      type: 'box',
+      rect: normalizedRect(dragStart, point),
+      color: currentColor(),
+      hex: selectedMaterial.hex,
+      filled: boxFilledInput.checked,
+      thickness: numericInput(boxThicknessInput, 2),
+    });
   } else if (tool === 'lattice') {
-    drawLattice(editorImageData, normalizedRect(dragStart, point), currentColor(), latticeOptions());
+    addDesignElement({
+      type: 'lattice',
+      rect: normalizedRect(dragStart, point),
+      color: currentColor(),
+      hex: selectedMaterial.hex,
+      options: latticeOptions(),
+    });
   } else if (tool === 'erase') {
     eraseLine(editorImageData, dragStart, point, 3);
+    baseEditorImageData = cloneImageData(editorImageData);
   }
 
   dragStart = null;
@@ -330,13 +421,275 @@ function handleDesignerPointerUp(event) {
 }
 
 function handleDesignerPointerLeave(event) {
-  if (!dragStart || selectedTool() === 'erase') return;
+  if (activeEdit || !dragStart || selectedTool() === 'erase') return;
   designerCanvas.releasePointerCapture(event.pointerId);
   dragStart = null;
   renderDesignerCanvas(editorImageData);
 }
 
+function addDesignElement(element) {
+  const newElement = { id: nextElementId++, ...element };
+  designElements.push(newElement);
+  selectElement(newElement.id);
+  rebuildEditorImageData();
+}
+
+function selectElement(id) {
+  selectedElementId = id;
+  const element = currentSelectedElement();
+  syncToolParametersFromElement(element);
+  renderSelectedElementParameters();
+  renderDesignerCanvas(editorImageData);
+}
+
+function currentSelectedElement() {
+  return designElements.find((element) => element.id === selectedElementId) ?? null;
+}
+
+function rebuildEditorImageData() {
+  editorImageData = cloneImageData(baseEditorImageData);
+  for (const element of designElements) drawElement(editorImageData, element);
+  renderSelectedElementParameters();
+  renderDesignerCanvas(editorImageData);
+}
+
+function drawElement(imageData, element) {
+  if (element.type === 'line') drawThickLine(imageData, element.start, element.end, element.color, element.thickness ?? 1);
+  if (element.type === 'box') drawBox(imageData, element.rect, element.color, element.filled, element.thickness);
+  if (element.type === 'lattice') drawLattice(imageData, element.rect, element.color, element.options);
+}
+
+function elementAtPoint(point) {
+  for (const element of [...designElements].reverse()) {
+    if (element.type === 'line' && distanceToSegment(point, element.start, element.end) <= Math.max(3, element.thickness ?? 1)) return element;
+    if ((element.type === 'box' || element.type === 'lattice') && pointInRect(point, element.rect)) return element;
+  }
+  return null;
+}
+
+function handleAtPoint(element, point) {
+  const handles = elementHandles(element);
+  for (const [name, handlePoint] of Object.entries(handles)) {
+    if (Math.abs(point.x - handlePoint.x) <= 2 && Math.abs(point.y - handlePoint.y) <= 2) return name;
+  }
+  return null;
+}
+
+function elementHandles(element) {
+  if (element.type === 'line') return { start: element.start, end: element.end };
+  const { x, y, width, height } = element.rect;
+  return {
+    nw: { x, y },
+    ne: { x: x + width - 1, y },
+    se: { x: x + width - 1, y: y + height - 1 },
+    sw: { x, y: y + height - 1 },
+  };
+}
+
+function editSelectedElement(point) {
+  const element = currentSelectedElement();
+  if (!element || !activeEdit) return;
+
+  if (activeEdit.type === 'move') {
+    const dx = point.x - activeEdit.lastPoint.x;
+    const dy = point.y - activeEdit.lastPoint.y;
+    moveElement(element, dx, dy);
+    activeEdit.lastPoint = point;
+  } else if (element.type === 'line') {
+    element[activeEdit.handle] = point;
+  } else {
+    resizeRectElement(element, activeEdit.handle, point);
+  }
+
+  rebuildEditorImageData();
+}
+
+function moveElement(element, dx, dy) {
+  if (!dx && !dy) return;
+  if (element.type === 'line') {
+    element.start = clampPoint({ x: element.start.x + dx, y: element.start.y + dy });
+    element.end = clampPoint({ x: element.end.x + dx, y: element.end.y + dy });
+    return;
+  }
+  element.rect = {
+    ...element.rect,
+    x: clamp(element.rect.x + dx, 0, DEFAULTS.imageWidth - element.rect.width),
+    y: clamp(element.rect.y + dy, 0, DEFAULTS.imageHeight - element.rect.height),
+  };
+}
+
+function resizeRectElement(element, handle, point) {
+  const rect = element.rect;
+  const left = handle.includes('w') ? point.x : rect.x;
+  const right = handle.includes('e') ? point.x : rect.x + rect.width - 1;
+  const top = handle.includes('n') ? point.y : rect.y;
+  const bottom = handle.includes('s') ? point.y : rect.y + rect.height - 1;
+  element.rect = normalizedRect({ x: left, y: top }, { x: right, y: bottom });
+}
+
+function renderSelectionOverlay(ctxForOverlay) {
+  const element = currentSelectedElement();
+  if (!element) return;
+  ctxForOverlay.save();
+  ctxForOverlay.strokeStyle = '#ffffff';
+  ctxForOverlay.fillStyle = '#f2994a';
+  ctxForOverlay.lineWidth = 1;
+  if (element.type === 'line') {
+    ctxForOverlay.beginPath();
+    ctxForOverlay.moveTo(element.start.x + 0.5, element.start.y + 0.5);
+    ctxForOverlay.lineTo(element.end.x + 0.5, element.end.y + 0.5);
+    ctxForOverlay.stroke();
+  } else {
+    ctxForOverlay.strokeRect(element.rect.x + 0.5, element.rect.y + 0.5, element.rect.width - 1, element.rect.height - 1);
+  }
+  for (const point of Object.values(elementHandles(element))) drawHandle(ctxForOverlay, point);
+  ctxForOverlay.restore();
+}
+
+function renderSelectedElementParameters() {
+  const element = currentSelectedElement();
+  selectedElementParameters.hidden = !element;
+  if (!element) {
+    selectedElementForm.innerHTML = '';
+    return;
+  }
+
+  if (element.type === 'line') {
+    selectedElementForm.innerHTML = `
+      <div class="two-col">
+        <label>Start X<input data-element-field="start.x" type="number" min="0" max="${DEFAULTS.imageWidth - 1}" value="${element.start.x}" /></label>
+        <label>Start Y<input data-element-field="start.y" type="number" min="0" max="${DEFAULTS.imageHeight - 1}" value="${element.start.y}" /></label>
+        <label>End X<input data-element-field="end.x" type="number" min="0" max="${DEFAULTS.imageWidth - 1}" value="${element.end.x}" /></label>
+        <label>End Y<input data-element-field="end.y" type="number" min="0" max="${DEFAULTS.imageHeight - 1}" value="${element.end.y}" /></label>
+      </div>
+      <label>Line thickness (px)<input data-element-field="thickness" type="number" min="1" max="8" value="${element.thickness ?? 1}" /></label>
+      <button type="button" class="secondary compact" data-delete-element>Delete element</button>
+    `;
+  } else if (element.type === 'box') {
+    selectedElementForm.innerHTML = rectFields(element.rect) + `
+      <label><input data-element-field="filled" type="checkbox" ${element.filled ? 'checked' : ''} /> Filled box</label>
+      <label>Wall thickness (px)<input data-element-field="thickness" type="number" min="1" max="16" value="${element.thickness}" /></label>
+      <button type="button" class="secondary compact" data-delete-element>Delete element</button>
+    `;
+  } else {
+    selectedElementForm.innerHTML = rectFields(element.rect) + `
+      <label>Pattern
+        <select data-element-field="options.pattern">
+          ${['cross', 'diagonal', 'square', 'triangle'].map((pattern) => `<option value="${pattern}" ${element.options.pattern === pattern ? 'selected' : ''}>${pattern}</option>`).join('')}
+        </select>
+      </label>
+      <label>Cell size (px)<input data-element-field="options.spacing" type="number" min="3" max="32" value="${element.options.spacing}" /></label>
+      <label>Strut thickness (px)<input data-element-field="options.thickness" type="number" min="1" max="8" value="${element.options.thickness}" /></label>
+      <button type="button" class="secondary compact" data-delete-element>Delete element</button>
+    `;
+  }
+
+  selectedElementForm.querySelectorAll('[data-element-field]').forEach((input) => {
+    input.addEventListener('input', updateSelectedElementFromForm);
+    input.addEventListener('change', updateSelectedElementFromForm);
+  });
+  selectedElementForm.querySelector('[data-delete-element]')?.addEventListener('click', () => {
+    designElements = designElements.filter((item) => item.id !== selectedElementId);
+    selectedElementId = null;
+    rebuildEditorImageData();
+  });
+}
+
+function rectFields(rect) {
+  return `
+    <div class="two-col">
+      <label>X<input data-element-field="rect.x" type="number" min="0" max="${DEFAULTS.imageWidth - 1}" value="${rect.x}" /></label>
+      <label>Y<input data-element-field="rect.y" type="number" min="0" max="${DEFAULTS.imageHeight - 1}" value="${rect.y}" /></label>
+      <label>Width<input data-element-field="rect.width" type="number" min="1" max="${DEFAULTS.imageWidth}" value="${rect.width}" /></label>
+      <label>Height<input data-element-field="rect.height" type="number" min="1" max="${DEFAULTS.imageHeight}" value="${rect.height}" /></label>
+    </div>`;
+}
+
+function updateSelectedElementFromForm(event) {
+  const element = currentSelectedElement();
+  if (!element) return;
+  setNestedValue(element, event.target.dataset.elementField, event.target.type === 'checkbox' ? event.target.checked : event.target.value);
+  normalizeElement(element);
+  rebuildEditorImageData();
+}
+
+function updateSelectedElementFromToolParameters() {
+  const element = currentSelectedElement();
+  if (!element) return;
+  if (element.type === 'box' && selectedTool() === 'box') {
+    element.filled = boxFilledInput.checked;
+    element.thickness = numericInput(boxThicknessInput, 2);
+  }
+  if (element.type === 'lattice' && selectedTool() === 'lattice') element.options = latticeOptions();
+  normalizeElement(element);
+  rebuildEditorImageData();
+}
+
+function syncToolParametersFromElement(element) {
+  if (!element) return;
+  if (element.type === 'box') {
+    boxFilledInput.checked = element.filled;
+    boxThicknessInput.value = element.thickness;
+  }
+  if (element.type === 'lattice') {
+    latticePatternInput.value = element.options.pattern;
+    latticeSpacingInput.value = element.options.spacing;
+    latticeThicknessInput.value = element.options.thickness;
+  }
+}
+
+function setNestedValue(object, path, rawValue) {
+  const parts = path.split('.');
+  let target = object;
+  while (parts.length > 1) target = target[parts.shift()];
+  const key = parts[0];
+  target[key] = typeof rawValue === 'boolean' ? rawValue : Number.isNaN(Number(rawValue)) ? rawValue : Number(rawValue);
+}
+
+function normalizeElement(element) {
+  if (element.type === 'line') {
+    element.start = clampPoint(element.start);
+    element.end = clampPoint(element.end);
+    element.thickness = clamp(Math.round(element.thickness ?? 1), 1, 8);
+    return;
+  }
+  element.rect = {
+    x: clamp(Math.round(element.rect.x), 0, DEFAULTS.imageWidth - 1),
+    y: clamp(Math.round(element.rect.y), 0, DEFAULTS.imageHeight - 1),
+    width: clamp(Math.round(element.rect.width), 1, DEFAULTS.imageWidth),
+    height: clamp(Math.round(element.rect.height), 1, DEFAULTS.imageHeight),
+  };
+  element.rect.width = Math.min(element.rect.width, DEFAULTS.imageWidth - element.rect.x);
+  element.rect.height = Math.min(element.rect.height, DEFAULTS.imageHeight - element.rect.y);
+  if (element.type === 'box') element.thickness = clamp(Math.round(element.thickness ?? 2), 1, 16);
+  if (element.type === 'lattice') element.options = { ...element.options, spacing: clamp(Math.round(element.options.spacing), 3, 32), thickness: clamp(Math.round(element.options.thickness), 1, 8) };
+}
+
+function updateToolSelection() {
+  const tool = selectedTool();
+  document.querySelectorAll('.tool-choice').forEach((choice) => choice.classList.toggle('active', choice.querySelector('input').value === tool));
+  document.querySelectorAll('[data-tool-parameters]').forEach((panel) => { panel.hidden = panel.dataset.toolParameters !== tool; });
+}
+
+function pointInRect(point, rect) {
+  return point.x >= rect.x && point.x < rect.x + rect.width && point.y >= rect.y && point.y < rect.y + rect.height;
+}
+
+function distanceToSegment(point, start, end) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSquared = dx * dx + dy * dy;
+  if (lengthSquared === 0) return Math.hypot(point.x - start.x, point.y - start.y);
+  const t = clamp(((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared, 0, 1);
+  return Math.hypot(point.x - (start.x + t * dx), point.y - (start.y + t * dy));
+}
+
+function clampPoint(point) {
+  return { x: clamp(Math.round(point.x), 0, DEFAULTS.imageWidth - 1), y: clamp(Math.round(point.y), 0, DEFAULTS.imageHeight - 1) };
+}
+
 function updateDesignerHint(message = null) {
+  updateToolSelection();
   if (message) {
     designerHint.textContent = message;
     return;
@@ -355,6 +708,7 @@ function renderDesignerCanvas(imageData, overlay = null) {
   designerCanvas.height = imageData.height;
   designerCtx.putImageData(cloneImageData(imageData), 0, 0);
   drawPixelGrid(designerCtx, imageData.width, imageData.height);
+  renderSelectionOverlay(designerCtx);
   if (overlay) overlay(designerCtx);
 }
 

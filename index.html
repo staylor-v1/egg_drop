@@ -50,19 +50,37 @@
 
               <fieldset>
                 <legend>Tool</legend>
-                <label><input type="radio" name="designerTool" value="line" checked /> Line between clicks</label>
-                <label><input type="radio" name="designerTool" value="box" /> Box drag</label>
-                <label><input type="radio" name="designerTool" value="lattice" /> Lattice drag</label>
-                <label><input type="radio" name="designerTool" value="erase" /> Eraser</label>
+                <div class="tool-picker" role="radiogroup" aria-label="Designer tools">
+                  <label class="tool-choice active" title="Line tool">
+                    <input type="radio" name="designerTool" value="line" checked />
+                    <span aria-hidden="true">╱</span>
+                    <strong>Line</strong>
+                  </label>
+                  <label class="tool-choice" title="Box tool">
+                    <input type="radio" name="designerTool" value="box" />
+                    <span aria-hidden="true">▭</span>
+                    <strong>Box</strong>
+                  </label>
+                  <label class="tool-choice" title="Lattice tool">
+                    <input type="radio" name="designerTool" value="lattice" />
+                    <span aria-hidden="true">▦</span>
+                    <strong>Lattice</strong>
+                  </label>
+                  <label class="tool-choice" title="Eraser tool">
+                    <input type="radio" name="designerTool" value="erase" />
+                    <span aria-hidden="true">⌫</span>
+                    <strong>Erase</strong>
+                  </label>
+                </div>
               </fieldset>
 
-              <fieldset id="boxParameters">
+              <fieldset id="boxParameters" data-tool-parameters="box" hidden>
                 <legend>Box parameters</legend>
                 <label><input id="boxFilled" type="checkbox" checked /> Filled box</label>
                 <label>Wall thickness (px)<input id="boxThickness" type="number" min="1" max="16" step="1" value="2" /></label>
               </fieldset>
 
-              <fieldset id="latticeParameters">
+              <fieldset id="latticeParameters" data-tool-parameters="lattice" hidden>
                 <legend>Lattice parameters</legend>
                 <label>Pattern
                   <select id="latticePattern">
@@ -74,6 +92,11 @@
                 </label>
                 <label>Cell size (px)<input id="latticeSpacing" type="number" min="3" max="32" step="1" value="10" /></label>
                 <label>Strut thickness (px)<input id="latticeThickness" type="number" min="1" max="8" step="1" value="1" /></label>
+              </fieldset>
+
+              <fieldset id="selectedElementParameters" hidden>
+                <legend>Selected element</legend>
+                <div id="selectedElementForm" class="selected-element-form"></div>
               </fieldset>
             </aside>
 
