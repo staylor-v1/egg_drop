@@ -8,6 +8,15 @@
     <script src="https://cdn.jsdelivr.net/npm/planck@1.3.0/dist/planck.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js" defer></script>
     <script type="module" src="src/app.js"></script>
+    <script>
+      if (window.location.protocol === 'file:') {
+        window.addEventListener('DOMContentLoaded', () => {
+          const fallback = document.createElement('script');
+          fallback.src = 'src/app-file-fallback.js';
+          document.head.append(fallback);
+        });
+      }
+    </script>
   </head>
   <body>
     <header class="app-header">
