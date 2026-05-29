@@ -156,10 +156,14 @@
               <label>Payload mass (kg)<input name="payloadMassKg" type="number" min="0" max="1" step="0.001" /></label>
               <label>Break threshold (g)<input name="breakThresholdG" type="number" min="5" max="200" step="1" /></label>
               <label>Pixel scale (m/px)<input name="pixelScaleM" type="number" min="0.0005" max="0.02" step="0.0005" /></label>
+              <label>Display speed (×)<input name="displaySpeed" type="number" min="0.1" max="10" step="0.1" /></label>
               <label>Nominal density (kg/m³)<input name="nominalDensityKgM3" type="number" min="10" max="1500" step="5" /></label>
             </form>
             <div class="button-row no-wrap">
               <button id="runButton" type="button">Run simulation</button>
+              <button id="playButton" type="button" class="secondary">Play</button>
+              <button id="pauseButton" type="button" class="secondary">Pause</button>
+              <button id="stopButton" type="button" class="secondary">Stop</button>
               <button id="exportButton" type="button" class="secondary">Export CSV</button>
             </div>
             <div id="metrics" class="metrics"></div>

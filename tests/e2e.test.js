@@ -76,6 +76,24 @@ async function visibleDesignerPixelCount(page) {
   });
 }
 
+
+async function expectCanvasHasImpactZoom(page) {
+  await page.waitForFunction(() => {
+    const canvas = document.querySelector('#simCanvas');
+    const ctx = canvas.getContext('2d');
+    const { data, width, height } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    let orangePixels = 0;
+    for (let index = 0; index < data.length; index += 4) {
+      const r = data[index];
+      const g = data[index + 1];
+      const b = data[index + 2];
+      const a = data[index + 3];
+      if (a > 120 && r > 180 && g > 90 && g < 190 && b < 120) orangePixels += 1;
+    }
+    return orangePixels > Math.min(80, width * height * 0.0004);
+  }, { timeout: 2500 });
+}
+
 async function openApp(page, url) {
   await page.route('https://cdn.jsdelivr.net/**', (route) => route.fulfill({ status: 204, body: '' }));
   await page.goto(url);
@@ -104,7 +122,12 @@ async function runCreateEditSimulateFlow(page, url) {
 
   await page.getByRole('button', { name: 'Apply design' }).click();
   await page.getByRole('button', { name: 'Simulate' }).click();
+  await page.locator('input[name="displaySpeed"]').fill('2.5');
   await page.getByRole('button', { name: 'Run simulation' }).click();
+  await expectCanvasHasImpactZoom(page);
+  await page.getByRole('button', { name: 'Pause' }).click();
+  await page.getByRole('button', { name: 'Play' }).click();
+  await page.getByRole('button', { name: 'Stop' }).click();
   const firstScore = await page.locator('.metric', { hasText: 'Score' }).textContent();
   assert.match(firstScore ?? '', /Score\d+\/100/);
 
