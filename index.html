@@ -33,6 +33,7 @@
           <input id="designFile" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" />
         </label>
         <p id="statusText" class="muted">Using generated example lattice. CAD import is intentionally out of scope for this image-only prototype.</p>
+        <button id="designerOpenButton" type="button" class="wide-button">Open design modal</button>
 
         <form id="controls" class="grid-form">
           <label>Drop height (m)<input name="dropHeightM" type="number" min="0.1" max="20" step="0.1" /></label>
@@ -59,7 +60,10 @@
       </section>
 
       <section class="panel design-panel">
-        <h2>Design preview</h2>
+        <div class="panel-header">
+          <h2>Design preview</h2>
+          <button id="designerOpenPreviewButton" type="button" class="secondary compact">Edit</button>
+        </div>
         <canvas id="designCanvas" width="64" height="256" aria-label="Uploaded design pixels"></canvas>
         <p class="muted">Transparent pixels are ignored. The egg starts at the top center of the assembly.</p>
       </section>
@@ -84,5 +88,66 @@
         <ul id="assumptions"></ul>
       </section>
     </main>
+
+    <dialog id="designerModal" class="designer-modal" aria-labelledby="designerTitle">
+      <form method="dialog" class="designer-shell">
+        <div class="designer-header">
+          <div>
+            <p class="eyebrow">Pixel structure editor</p>
+            <h2 id="designerTitle">Design modal</h2>
+            <p class="muted">Pick a material, then draw directly onto the 64 × 256 design grid.</p>
+          </div>
+          <button id="designerCloseButton" type="button" class="secondary compact" aria-label="Close design modal">×</button>
+        </div>
+
+        <div class="designer-grid">
+          <aside class="designer-tools" aria-label="Design tools">
+            <fieldset>
+              <legend>Material</legend>
+              <div id="designerMaterials" class="material-picker"></div>
+            </fieldset>
+
+            <fieldset>
+              <legend>Tool</legend>
+              <label><input type="radio" name="designerTool" value="line" checked /> Line between clicks</label>
+              <label><input type="radio" name="designerTool" value="box" /> Box drag</label>
+              <label><input type="radio" name="designerTool" value="lattice" /> Lattice drag</label>
+              <label><input type="radio" name="designerTool" value="erase" /> Eraser</label>
+            </fieldset>
+
+            <fieldset id="boxParameters">
+              <legend>Box parameters</legend>
+              <label><input id="boxFilled" type="checkbox" checked /> Filled box</label>
+              <label>Wall thickness (px)<input id="boxThickness" type="number" min="1" max="16" step="1" value="2" /></label>
+            </fieldset>
+
+            <fieldset id="latticeParameters">
+              <legend>Lattice parameters</legend>
+              <label>Pattern
+                <select id="latticePattern">
+                  <option value="cross">Cross brace</option>
+                  <option value="diagonal">Diagonal</option>
+                  <option value="square">Square grid</option>
+                  <option value="triangle">Triangle</option>
+                </select>
+              </label>
+              <label>Cell size (px)<input id="latticeSpacing" type="number" min="3" max="32" step="1" value="10" /></label>
+              <label>Strut thickness (px)<input id="latticeThickness" type="number" min="1" max="8" step="1" value="1" /></label>
+            </fieldset>
+
+            <div class="button-row">
+              <button id="designerApplyButton" type="button">Apply design</button>
+              <button id="designerClearButton" type="button" class="secondary">Clear</button>
+              <button id="designerCancelButton" type="button" class="secondary">Cancel</button>
+            </div>
+          </aside>
+
+          <div class="designer-stage">
+            <canvas id="designerCanvas" width="64" height="256" aria-label="Editable design canvas"></canvas>
+            <p id="designerHint" class="muted">Line tool: click once to set the start, then click again to draw.</p>
+          </div>
+        </div>
+      </form>
+    </dialog>
   </body>
 </html>
